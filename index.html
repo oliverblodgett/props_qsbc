@@ -1260,8 +1260,9 @@ function calculate(overrideMultiple) {
       llcDistAnnual: llcDistTax, ccorpDistAnnual: dividendTax, llcDistCum, ccorpDistCum });
   }
 
-  // Exit
-  const salePrice = annualProfit * multiple;
+  // Exit — price off final year EBITDA (trailing), not average
+  const exitEbitda = getAnnualProfitForYear(yearsUntilSale, annualProfit);
+  const salePrice = exitEbitda * multiple;
   const ownerProceeds = salePrice * ownershipPct;
   const gain = Math.max(0, ownerProceeds - basisInput);
 
@@ -1350,8 +1351,10 @@ function update() {
   document.getElementById('stateCGVal').textContent = (+document.getElementById('stateCGRate').value).toFixed(1) + '%';
   document.getElementById('localRateVal').textContent = (+document.getElementById('localRate').value).toFixed(1) + '%';
 
-  // Sale price display (EBITDA × Multiple)
-  const spEbitda = parseNum('annualProfit');
+  // Sale price display (trailing EBITDA × Multiple)
+  const spYears = +document.getElementById('years').value;
+  const spEbitdaBase = parseNum('annualProfit');
+  const spEbitda = getAnnualProfitForYear(spYears, spEbitdaBase);
   const spRev = parseNum('saleRevenue');
   const spMult = +document.getElementById('multiple').value;
   const spOwn = +document.getElementById('ownership').value / 100;
