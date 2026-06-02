@@ -590,10 +590,14 @@
       </div>
 
       <div class="card">
-        <div class="card-title">Company Financials</div>
+        <div class="card-title">Company &amp; Exit</div>
         <div class="input-group">
-          <label>Annual Company Pre-Tax Profit <span class="value" id="profitAvgLabel" style="display:none"></span></label>
-          <input type="text" id="annualProfit" value="2,000,000" inputmode="numeric" oninput="fmtInput(this); syncYearlyDefaults('profit'); update()" onblur="fmtInput(this)">
+          <label>Annual Revenue</label>
+          <input type="text" id="saleRevenue" value="28,000,000" inputmode="numeric" oninput="fmtInput(this); update()" onblur="fmtInput(this)">
+        </div>
+        <div class="input-group" style="margin-top:10px">
+          <label>Annual EBITDA <span class="value" id="profitAvgLabel" style="display:none"></span></label>
+          <input type="text" id="annualProfit" value="6,000,000" inputmode="numeric" oninput="fmtInput(this); syncYearlyDefaults('profit'); update()" onblur="fmtInput(this)">
         </div>
         <div class="yearly-expand" id="profitExpand">
           <div class="yearly-toggle" onclick="toggleYearly('profit')">
@@ -601,7 +605,9 @@
           </div>
           <div class="yearly-rows" id="profitYearRows"></div>
         </div>
-        <div class="input-group" style="margin-top:12px">
+        <div id="ebitdaMarginDisplay" style="margin-top:4px;font-size:0.75rem;color:var(--text-muted);font-style:italic;"></div>
+        <div class="divider" style="margin:12px 0;border-top:1px solid var(--border);"></div>
+        <div class="input-group">
           <label>Your Annual Distributions <span class="value" id="distVal">$400K</span> <span class="value" id="distAvgLabel" style="display:none"></span></label>
           <input type="range" id="distributions" min="0" max="5000000" value="400000" step="25000" oninput="syncYearlyDefaults('dist'); update()">
           <div id="distCapWarning" style="display:none;margin-top:6px;padding:6px 10px;border-radius:6px;font-size:0.75rem;background:var(--accent-yellow-dim);color:var(--accent-yellow);border:1px solid rgba(251,191,36,0.2);"></div>
@@ -612,32 +618,24 @@
           </div>
           <div class="yearly-rows" id="distYearRows"></div>
         </div>
-      </div>
-
-      <div class="card">
-        <div class="card-title">Exit Scenario</div>
-        <div class="input-row">
-          <div class="input-group">
-            <label>Revenue at Sale</label>
-            <input type="text" id="saleRevenue" value="10,000,000" inputmode="numeric" oninput="fmtInput(this); update()" onblur="fmtInput(this)">
-          </div>
-          <div class="input-group">
-            <label>Multiple <span class="value" id="multipleVal">6.0x</span></label>
-            <input type="range" id="multiple" min="1" max="20" value="6" step="0.1" oninput="update()">
-          </div>
+        <div class="divider" style="margin:12px 0;border-top:1px solid var(--border);"></div>
+        <div class="input-group">
+          <label>EBITDA Multiple at Exit <span class="value" id="multipleVal">6.0x</span></label>
+          <input type="range" id="multiple" min="1" max="30" value="6" step="0.1" oninput="update()">
         </div>
-        <div class="input-group" style="margin-top:12px">
+        <div class="input-group" style="margin-top:10px">
           <label>Years Until Sale <span class="value" id="yearsVal">7</span></label>
           <input type="range" id="years" min="1" max="15" value="7" step="1" oninput="update()">
         </div>
-        <div class="input-group" style="margin-top:12px">
+        <div class="input-group" style="margin-top:10px">
           <label>Cost Basis in Company</label>
           <input type="text" id="basis" value="0" inputmode="numeric" oninput="fmtInput(this); update()" onblur="fmtInput(this)">
         </div>
         <div style="margin-top:14px;padding:14px;border-radius:10px;background:linear-gradient(135deg,rgba(108,140,255,0.1),rgba(167,139,250,0.1));border:1px solid rgba(108,140,255,0.15);">
-          <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:4px;">Total Sale Price</div>
-          <div id="salePriceDisplay" style="font-size:1.5rem;font-weight:700;color:var(--accent-blue);font-variant-numeric:tabular-nums;">$60,000,000</div>
-          <div id="ownerShareDisplay" style="font-size:0.8rem;color:var(--text-secondary);margin-top:2px;">Your share: <strong style="color:var(--text-primary)">$30,000,000</strong></div>
+          <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:4px;">Enterprise Value (EBITDA × Multiple)</div>
+          <div id="salePriceDisplay" style="font-size:1.5rem;font-weight:700;color:var(--accent-blue);font-variant-numeric:tabular-nums;">$36,000,000</div>
+          <div id="ownerShareDisplay" style="font-size:0.8rem;color:var(--text-secondary);margin-top:2px;">Your share: <strong style="color:var(--text-primary)">$18,000,000</strong></div>
+          <div id="revenueMultDisplay" style="font-size:0.72rem;color:var(--text-muted);margin-top:4px;"></div>
         </div>
       </div>
 
@@ -1196,7 +1194,6 @@ function calculate(overrideMultiple) {
   const ownershipPct = +document.getElementById('ownership').value / 100;
   const annualProfit = parseNum('annualProfit');
   const distributions = +document.getElementById('distributions').value;
-  const saleRevenue = parseNum('saleRevenue');
   const multiple = overrideMultiple || +document.getElementById('multiple').value;
   const yearsUntilSale = +document.getElementById('years').value;
   const basisInput = parseNum('basis');
@@ -1264,7 +1261,7 @@ function calculate(overrideMultiple) {
   }
 
   // Exit
-  const salePrice = saleRevenue * multiple;
+  const salePrice = annualProfit * multiple;
   const ownerProceeds = salePrice * ownershipPct;
   const gain = Math.max(0, ownerProceeds - basisInput);
 
@@ -1353,13 +1350,19 @@ function update() {
   document.getElementById('stateCGVal').textContent = (+document.getElementById('stateCGRate').value).toFixed(1) + '%';
   document.getElementById('localRateVal').textContent = (+document.getElementById('localRate').value).toFixed(1) + '%';
 
-  // Sale price display
+  // Sale price display (EBITDA × Multiple)
+  const spEbitda = parseNum('annualProfit');
   const spRev = parseNum('saleRevenue');
   const spMult = +document.getElementById('multiple').value;
   const spOwn = +document.getElementById('ownership').value / 100;
-  const totalSalePrice = spRev * spMult;
+  const totalSalePrice = spEbitda * spMult;
   document.getElementById('salePriceDisplay').textContent = fmtFull(totalSalePrice);
   document.getElementById('ownerShareDisplay').innerHTML = 'Your share: <strong style="color:var(--text-primary)">' + fmtFull(totalSalePrice * spOwn) + '</strong>';
+  // EBITDA margin and implied revenue multiple
+  const margin = spRev > 0 ? (spEbitda / spRev * 100) : 0;
+  document.getElementById('ebitdaMarginDisplay').textContent = spRev > 0 ? 'EBITDA margin: ' + margin.toFixed(1) + '%' : '';
+  const revMult = spRev > 0 ? (totalSalePrice / spRev) : 0;
+  document.getElementById('revenueMultDisplay').textContent = spRev > 0 ? 'Implied ' + revMult.toFixed(1) + 'x revenue' : '';
 
   const r = calculate();
   const years = +document.getElementById('years').value;
