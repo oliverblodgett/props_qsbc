@@ -330,7 +330,7 @@
   .exclusion-badge.none { background: var(--accent-red-dim); color: var(--accent-red); }
 
   /* KPIs */
-  .kpi-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
   @media (max-width: 768px) { .kpi-row { grid-template-columns: 1fr; } }
   .kpi {
     padding: 20px;
@@ -715,6 +715,11 @@
           <div class="kpi-label">Net Savings from Switch</div>
           <div class="kpi-value positive" id="kpiNet">$0</div>
           <div class="kpi-sub" id="kpiNetSub">Benefit of C-Corp</div>
+        </div>
+        <div class="card kpi" style="border-color:rgba(251,191,36,0.2)">
+          <div class="kpi-label">Crossover Year</div>
+          <div class="kpi-value" id="kpiCrossover" style="color:var(--accent-yellow)">—</div>
+          <div class="kpi-sub" id="kpiCrossoverSub">C-Corp stops being beneficial</div>
         </div>
       </div>
 
@@ -1443,17 +1448,40 @@ function update() {
   // Benefit chart — show net benefit at each year (including that year's exit scenario)
   const benefitLabels = [];
   const benefitData = [];
-  for (let y = 1; y <= 15; y++) {
+  let crossoverYear = null;
+  let prevBenefit = null;
+  let peakBenefit = 0;
+  let peakYear = 1;
+  for (let y = 1; y <= 30; y++) {
     const sim = calculateAtYear(y);
-    benefitLabels.push('Year ' + y);
+    benefitLabels.push('Yr ' + y);
     benefitData.push(sim.netBenefit);
+    if (sim.netBenefit > peakBenefit) { peakBenefit = sim.netBenefit; peakYear = y; }
+    // Crossover = first year after peak where benefit goes negative
+    if (prevBenefit !== null && prevBenefit >= 0 && sim.netBenefit < 0 && !crossoverYear) {
+      crossoverYear = y;
+    }
+    prevBenefit = sim.netBenefit;
   }
   benefitChart.data.labels = benefitLabels;
   benefitChart.data.datasets[0].data = benefitData;
   benefitChart.update('none');
 
+  // Crossover KPI
+  const crossEl = document.getElementById('kpiCrossover');
+  const crossSubEl = document.getElementById('kpiCrossoverSub');
+  if (crossoverYear) {
+    crossEl.textContent = 'Year ' + crossoverYear;
+    crossEl.style.color = 'var(--accent-yellow)';
+    crossSubEl.textContent = 'C-Corp stops being beneficial';
+  } else {
+    crossEl.textContent = '30+ yrs';
+    crossEl.style.color = 'var(--accent-green)';
+    crossSubEl.textContent = 'C-Corp stays beneficial';
+  }
+
   // Summary table
-  updateTable(r);
+  updateTable(r, crossoverYear, peakYear, peakBenefit);
 }
 
 function calculateAtYear(y) {
@@ -1465,33 +1493,47 @@ function calculateAtYear(y) {
   return r;
 }
 
-function updateTable(r) {
+function updateTable(r, crossoverYear, peakYear, peakBenefit) {
   const body = document.getElementById('summaryBody');
+  const pctExcl = Math.round(r.exclusionPct * 100);
   const rows = [
-    { section: 'Operating Period' },
-    { label: 'Avg annual pass-through / corp tax cost', llc: r.yearsUntilSale > 0 ? r.llcCum / r.yearsUntilSale : 0, ccorp: r.yearsUntilSale > 0 ? r.ccorpCum / r.yearsUntilSale : 0 },
-    { label: 'Total annual taxes (' + r.yearsUntilSale + ' years)', llc: r.llcCum, ccorp: r.ccorpCum },
-    { section: 'Exit Event' },
-    { label: 'Sale price (enterprise)', llc: r.salePrice, ccorp: r.salePrice, nodiff: true },
-    { label: 'Your proceeds (ownership share)', llc: r.ownerProceeds, ccorp: r.ownerProceeds, nodiff: true },
+    { section: 'Annual Operating Taxes (' + r.yearsUntilSale + ' Years)' },
+    { label: 'LLC pass-through tax (total)', llc: r.llcCum, ccorp: null, llcOnly: true },
+    { label: 'C-Corp: corporate tax (your share)', llc: null, ccorp: r.ccorpCum - r.ccorpDistCum, ccorpOnly: true },
+    { label: 'C-Corp: dividend tax on distributions', llc: null, ccorp: r.ccorpDistCum, ccorpOnly: true },
+    { label: 'Total operating taxes', llc: r.llcCum, ccorp: r.ccorpCum, highlight: true },
+
+    { section: 'Exit at Year ' + r.yearsUntilSale + ' (' + pctExcl + '% QSBS Exclusion)' },
+    { label: 'Enterprise value (EBITDA × multiple)', llc: r.salePrice, ccorp: r.salePrice, nodiff: true },
+    { label: 'Your share (' + Math.round(r.ownerProceeds / r.salePrice * 100) + '% ownership)', llc: r.ownerProceeds, ccorp: r.ownerProceeds, nodiff: true },
     { label: 'Capital gain', llc: r.gain, ccorp: r.gain, nodiff: true },
-    { label: 'QSBS exclusion applied', llc: 0, ccorp: r.gain * r.exclusionPct },
-    { label: 'Exit tax (capital gains)', llc: r.llcExitTax, ccorp: r.ccorpExitTax },
+    { label: 'QSBS exclusion (' + pctExcl + '%)', llc: 0, ccorp: r.gain * r.exclusionPct },
+    { label: 'Capital gains tax at exit', llc: r.llcExitTax, ccorp: r.ccorpExitTax },
     { label: 'Deferred tax on retained earnings', llc: 0, ccorp: r.deferredTax },
-    { section: 'Totals' },
-    { label: 'Total tax burden', llc: r.llcTotal, ccorp: r.ccorpTotal, highlight: true },
-    { label: 'Effective tax rate on proceeds', llc: r.ownerProceeds > 0 ? (r.llcTotal / r.ownerProceeds * 100) : 0, ccorp: r.ownerProceeds > 0 ? (r.ccorpTotal / r.ownerProceeds * 100) : 0, isPct: true },
+
+    { section: 'Total Tax Comparison' },
+    { label: 'Operating taxes', llc: r.llcCum, ccorp: r.ccorpCum },
+    { label: 'Exit taxes + deferred', llc: r.llcExitTax, ccorp: r.ccorpExitTax + r.deferredTax },
+    { label: 'TOTAL TAX BURDEN', llc: r.llcTotal, ccorp: r.ccorpTotal, highlight: true },
+    { label: 'Effective rate on sale proceeds', llc: r.ownerProceeds > 0 ? (r.llcTotal / r.ownerProceeds * 100) : 0, ccorp: r.ownerProceeds > 0 ? (r.ccorpTotal / r.ownerProceeds * 100) : 0, isPct: true },
     { label: 'NET SAVINGS FROM C-CORP', llc: null, ccorp: null, net: r.netBenefit, highlight: true },
-    { section: 'After-Tax Earnings (What You Walk Away With)' },
-    { label: 'Distributions received (' + r.yearsUntilSale + ' years)', llc: r.llcGrossDist, ccorp: r.ccorpGrossDist },
-    { label: 'Sale proceeds (your share)', llc: r.ownerProceeds, ccorp: r.ownerProceeds, nodiff: true },
-    { label: 'Total gross income', llc: r.llcGrossDist + r.ownerProceeds, ccorp: r.ccorpGrossDist + r.ownerProceeds, highlight: true },
-    { label: 'Less: total taxes (from above)', llc: r.llcTotal, ccorp: r.ccorpTotal },
+
+    { section: 'What You Walk Away With' },
+    { label: 'Distributions received', llc: r.llcGrossDist, ccorp: r.ccorpGrossDist },
+    { label: 'After-tax sale proceeds', llc: r.ownerProceeds - r.llcExitTax, ccorp: r.ownerProceeds - r.ccorpExitTax - r.deferredTax },
     { label: 'TOTAL AFTER-TAX EARNINGS', llc: r.llcAfterTaxTotal, ccorp: r.ccorpAfterTaxTotal, highlight: true },
+
+    { section: 'Timing & Crossover' },
+    { label: 'Peak benefit year', custom: 'Year ' + peakYear + ' (' + fmtFull(peakBenefit) + ' savings)' },
+    { label: 'Crossover year (C-Corp becomes costlier)', custom: crossoverYear ? 'Year ' + crossoverYear : 'Beyond 30 years' },
   ];
 
   body.innerHTML = rows.map(row => {
     if (row.section) return `<tr class="section-header"><td colspan="4">${row.section}</td></tr>`;
+    if (row.custom !== undefined) {
+      const isGood = !crossoverYear && row.label.includes('Crossover');
+      return `<tr><td>${row.label}</td><td colspan="3" style="text-align:right;font-weight:600;color:${isGood ? 'var(--accent-green)' : 'var(--accent-yellow)'}">${row.custom}</td></tr>`;
+    }
     if (row.net !== undefined) {
       const cls = row.net >= 0 ? 'positive' : 'negative';
       return `<tr><td class="highlight">${row.label}</td><td colspan="2"></td><td class="highlight ${cls}">${row.net >= 0 ? '+' : ''}${fmtFull(row.net)}</td></tr>`;
@@ -1501,10 +1543,16 @@ function updateTable(r) {
       const cls = diff > 0 ? 'positive' : diff < 0 ? 'negative' : '';
       return `<tr><td>${row.label}</td><td>${pct(row.llc)}</td><td>${pct(row.ccorp)}</td><td class="${cls}">${diff > 0 ? '-' : '+'}${pct(Math.abs(diff))}</td></tr>`;
     }
+    if (row.llcOnly) {
+      return `<tr><td>${row.label}</td><td>${fmtFull(row.llc)}</td><td>—</td><td></td></tr>`;
+    }
+    if (row.ccorpOnly) {
+      return `<tr><td>${row.label}</td><td>—</td><td>${fmtFull(row.ccorp)}</td><td></td></tr>`;
+    }
     const diff = row.llc - row.ccorp;
     const cls = row.highlight ? 'highlight ' : '';
     const diffCls = row.nodiff ? '' : (diff > 0 ? 'positive' : diff < 0 ? 'negative' : '');
-    const diffText = row.nodiff ? '—' : ((diff >= 0 ? '' : '') + fmtFull(diff));
+    const diffText = row.nodiff ? '—' : fmtFull(diff);
     return `<tr><td class="${cls}">${row.label}</td><td>${fmtFull(row.llc)}</td><td>${fmtFull(row.ccorp)}</td><td class="${cls}${diffCls}">${diffText}</td></tr>`;
   }).join('');
 }
