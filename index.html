@@ -428,6 +428,47 @@
     margin: 4px 0;
   }
 
+  /* Saved Configs */
+  .config-bar {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 4px;
+  }
+  .config-bar select {
+    flex: 1;
+    padding: 8px 10px;
+    font-size: 0.82rem;
+  }
+  .config-bar .btn {
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: rgba(255,255,255,0.06);
+    color: var(--text-secondary);
+    font-size: 0.78rem;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s;
+  }
+  .config-bar .btn:hover { background: rgba(255,255,255,0.1); color: var(--text-primary); }
+  .config-bar .btn.save { border-color: rgba(0,212,170,0.3); color: var(--accent-green); }
+  .config-bar .btn.save:hover { background: rgba(0,212,170,0.12); }
+  .config-bar .btn.del { border-color: rgba(255,107,107,0.2); color: var(--accent-red); font-size: 0.9rem; padding: 8px 10px; }
+  .config-bar .btn.del:hover { background: rgba(255,107,107,0.1); }
+  .save-row {
+    display: none;
+    gap: 8px;
+    align-items: center;
+    margin-top: 6px;
+  }
+  .save-row.open { display: flex; }
+  .save-row input {
+    flex: 1;
+    padding: 8px 10px;
+    font-size: 0.82rem;
+  }
+
   /* Password Gate */
   .pw-gate {
     display: flex;
@@ -510,6 +551,21 @@
   <div class="dashboard">
     <!-- INPUTS -->
     <div class="inputs-panel">
+      <div class="card">
+        <div class="card-title">Saved Scenarios</div>
+        <div class="config-bar">
+          <select id="configSelect" onchange="loadConfig()">
+            <option value="">— Select a scenario —</option>
+          </select>
+          <button class="btn save" onclick="showSaveRow()">Save</button>
+          <button class="btn del" id="configDelBtn" onclick="deleteConfig()" style="display:none" title="Delete">✕</button>
+        </div>
+        <div class="save-row" id="saveRow">
+          <input type="text" id="configName" placeholder="Scenario name…" onkeydown="if(event.key==='Enter')saveConfig()">
+          <button class="btn save" onclick="saveConfig()">Save</button>
+        </div>
+      </div>
+
       <div class="card">
         <div class="card-title">Location &amp; Ownership</div>
         <div class="input-group">
@@ -1480,9 +1536,122 @@ async function checkPw() {
   }
 }
 
+// ─── SAVED SCENARIOS ───────────────────────────────────────
+const CONFIG_KEY = 'qsbs_configs';
+const INPUT_IDS = ['zipCode','ownership','annualProfit','distributions','saleRevenue','multiple','years','basis','fedRate','ltcgRate','corpRate','divRate','stateRate','stateCGRate','localRate'];
+
+function getSavedConfigs() {
+  try { return JSON.parse(localStorage.getItem(CONFIG_KEY)) || {}; } catch(e) { return {}; }
+}
+
+function refreshConfigDropdown(selectName) {
+  const sel = document.getElementById('configSelect');
+  const configs = getSavedConfigs();
+  const names = Object.keys(configs).sort();
+  sel.innerHTML = '<option value="">— Select a scenario —</option>';
+  names.forEach(n => {
+    const opt = document.createElement('option');
+    opt.value = n;
+    opt.textContent = n;
+    sel.appendChild(opt);
+  });
+  if (selectName) sel.value = selectName;
+  document.getElementById('configDelBtn').style.display = sel.value ? '' : 'none';
+}
+
+function showSaveRow() {
+  const row = document.getElementById('saveRow');
+  row.classList.toggle('open');
+  if (row.classList.contains('open')) {
+    document.getElementById('configName').focus();
+  }
+}
+
+function saveConfig() {
+  const name = document.getElementById('configName').value.trim();
+  if (!name) return;
+  const configs = getSavedConfigs();
+  const snapshot = {};
+  INPUT_IDS.forEach(id => {
+    const el = document.getElementById(id);
+    snapshot[id] = el.type === 'range' ? el.value : el.value;
+  });
+  snapshot.qbiEnabled = qbiEnabled;
+  // Save yearly customization if active
+  if (yearlyOpen.profit && yearlyCustomized.profit) {
+    snapshot.yearlyProfit = getYearlyValues('profit');
+  }
+  if (yearlyOpen.dist && yearlyCustomized.dist) {
+    snapshot.yearlyDist = getYearlyValues('dist');
+  }
+  configs[name] = snapshot;
+  localStorage.setItem(CONFIG_KEY, JSON.stringify(configs));
+  document.getElementById('configName').value = '';
+  document.getElementById('saveRow').classList.remove('open');
+  refreshConfigDropdown(name);
+}
+
+function loadConfig() {
+  const sel = document.getElementById('configSelect');
+  const name = sel.value;
+  document.getElementById('configDelBtn').style.display = name ? '' : 'none';
+  if (!name) return;
+  const configs = getSavedConfigs();
+  const snapshot = configs[name];
+  if (!snapshot) return;
+
+  INPUT_IDS.forEach(id => {
+    const el = document.getElementById(id);
+    if (snapshot[id] !== undefined) el.value = snapshot[id];
+  });
+  if (snapshot.qbiEnabled !== undefined && snapshot.qbiEnabled !== qbiEnabled) {
+    toggleQBI();
+  }
+
+  // Restore yearly customization
+  if (snapshot.yearlyProfit && snapshot.yearlyProfit.length > 0) {
+    if (!yearlyOpen.profit) toggleYearly('profit');
+    yearlyCustomized.profit = true;
+    const container = document.getElementById('profitYearRows');
+    const inputs = container.querySelectorAll('input[type="text"]');
+    snapshot.yearlyProfit.forEach((v, i) => {
+      if (inputs[i]) inputs[i].value = Number(v).toLocaleString('en-US');
+    });
+    updateYearlyAvg('profit');
+  } else {
+    if (yearlyOpen.profit) toggleYearly('profit');
+  }
+  if (snapshot.yearlyDist && snapshot.yearlyDist.length > 0) {
+    if (!yearlyOpen.dist) toggleYearly('dist');
+    yearlyCustomized.dist = true;
+    const container = document.getElementById('distYearRows');
+    const inputs = container.querySelectorAll('input[type="text"]');
+    snapshot.yearlyDist.forEach((v, i) => {
+      if (inputs[i]) inputs[i].value = Number(v).toLocaleString('en-US');
+    });
+    updateYearlyAvg('dist');
+  } else {
+    if (yearlyOpen.dist) toggleYearly('dist');
+  }
+
+  onZipChange();
+  update();
+}
+
+function deleteConfig() {
+  const sel = document.getElementById('configSelect');
+  const name = sel.value;
+  if (!name) return;
+  const configs = getSavedConfigs();
+  delete configs[name];
+  localStorage.setItem(CONFIG_KEY, JSON.stringify(configs));
+  refreshConfigDropdown();
+}
+
 function initApp() {
   onZipChange();
   update();
+  refreshConfigDropdown();
 }
 
 // Auto-unlock if already authed this session
