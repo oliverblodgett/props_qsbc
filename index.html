@@ -1404,7 +1404,8 @@ function update() {
   document.getElementById('kpiLLC').textContent = fmtFull(r.llcTotal);
   document.getElementById('kpiCCorp').textContent = fmtFull(r.ccorpTotal);
   document.getElementById('kpiLLCSub').textContent = fmtFull(r.llcCum) + ' annual + ' + fmtFull(r.llcExitTax) + ' exit';
-  document.getElementById('kpiCCorpSub').textContent = fmtFull(r.ccorpCum) + ' annual + ' + fmtFull(r.ccorpExitTax) + ' exit';
+  const ccorpExitPlusDef = r.ccorpExitTax + r.deferredTax;
+  document.getElementById('kpiCCorpSub').textContent = fmtFull(r.ccorpCum) + ' annual + ' + fmtFull(ccorpExitPlusDef) + ' exit/deferred';
 
   const netEl = document.getElementById('kpiNet');
   netEl.textContent = (r.netBenefit >= 0 ? '+' : '') + fmtFull(r.netBenefit);
