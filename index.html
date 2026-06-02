@@ -608,16 +608,11 @@
         <div id="ebitdaMarginDisplay" style="margin-top:4px;font-size:0.75rem;color:var(--text-muted);font-style:italic;"></div>
         <div class="divider" style="margin:12px 0;border-top:1px solid var(--border);"></div>
         <div class="input-group">
-          <label>Your Annual Distributions <span class="value" id="distVal">$400K</span> <span class="value" id="distAvgLabel" style="display:none"></span></label>
-          <input type="range" id="distributions" min="0" max="5000000" value="400000" step="25000" oninput="syncYearlyDefaults('dist'); update()">
-          <div id="distCapWarning" style="display:none;margin-top:6px;padding:6px 10px;border-radius:6px;font-size:0.75rem;background:var(--accent-yellow-dim);color:var(--accent-yellow);border:1px solid rgba(251,191,36,0.2);"></div>
+          <label>Your Distributions (% of EBITDA) <span class="value" id="distVal">20%</span></label>
+          <input type="range" id="distPct" min="0" max="100" value="20" step="1" oninput="update()">
         </div>
-        <div class="yearly-expand" id="distExpand">
-          <div class="yearly-toggle" onclick="toggleYearly('dist')">
-            <span class="chevron">▶</span> Customize by year
-          </div>
-          <div class="yearly-rows" id="distYearRows"></div>
-        </div>
+        <div id="distByYear" style="margin-top:8px;"></div>
+        <div id="distCapWarning" style="display:none;margin-top:6px;padding:6px 10px;border-radius:6px;font-size:0.75rem;background:var(--accent-yellow-dim);color:var(--accent-yellow);border:1px solid rgba(251,191,36,0.2);"></div>
         <div class="divider" style="margin:12px 0;border-top:1px solid var(--border);"></div>
         <div class="input-group">
           <label>EBITDA Multiple at Exit <span class="value" id="multipleVal">6.0x</span></label>
@@ -1133,37 +1128,22 @@ function onYearlyEdit(type) {
 }
 
 function updateYearlyAvg(type) {
-  const avgLabel = document.getElementById(type === 'profit' ? 'profitAvgLabel' : 'distAvgLabel');
-  if (!yearlyOpen[type] || !yearlyCustomized[type]) {
+  if (type !== 'profit') return; // only profit has yearly expand now
+  const avgLabel = document.getElementById('profitAvgLabel');
+  if (!yearlyOpen.profit || !yearlyCustomized.profit) {
     avgLabel.style.display = 'none';
-    // Re-enable the main input
-    if (type === 'profit') {
-      document.getElementById('annualProfit').style.opacity = '';
-      document.getElementById('annualProfit').readOnly = false;
-    } else {
-      document.getElementById('distributions').disabled = false;
-      document.getElementById('distributions').style.opacity = '';
-    }
+    document.getElementById('annualProfit').style.opacity = '';
+    document.getElementById('annualProfit').readOnly = false;
     return;
   }
-  const vals = getYearlyValues(type);
+  const vals = getYearlyValues('profit');
   if (vals.length === 0) { avgLabel.style.display = 'none'; return; }
   const avg = vals.reduce((a,b) => a+b, 0) / vals.length;
   avgLabel.style.display = 'inline';
   avgLabel.textContent = '(avg: ' + fmt(avg) + ')';
-
-  // Update main input to show the average and make it read-only
-  if (type === 'profit') {
-    document.getElementById('annualProfit').value = Number(Math.round(avg)).toLocaleString('en-US');
-    document.getElementById('annualProfit').style.opacity = '0.5';
-    document.getElementById('annualProfit').readOnly = true;
-  } else {
-    // Update the slider to the average and dim it
-    document.getElementById('distributions').value = Math.round(avg);
-    document.getElementById('distributions').disabled = true;
-    document.getElementById('distributions').style.opacity = '0.5';
-    document.getElementById('distVal').textContent = fmt(avg);
-  }
+  document.getElementById('annualProfit').value = Number(Math.round(avg)).toLocaleString('en-US');
+  document.getElementById('annualProfit').style.opacity = '0.5';
+  document.getElementById('annualProfit').readOnly = true;
 }
 
 function getYearlyValues(type) {
@@ -1183,17 +1163,13 @@ function getAnnualProfitForYear(y, defaultProfit) {
   return (y <= vals.length) ? vals[y-1] : defaultProfit;
 }
 
-function getDistributionsForYear(y, defaultDist) {
-  if (!yearlyOpen.dist || !yearlyCustomized.dist) return defaultDist;
-  const vals = getYearlyValues('dist');
-  return (y <= vals.length) ? vals[y-1] : defaultDist;
-}
+
 
 // ─── CALCULATION ENGINE ─────────────────────────────────────
 function calculate(overrideMultiple) {
   const ownershipPct = +document.getElementById('ownership').value / 100;
   const annualProfit = parseNum('annualProfit');
-  const distributions = +document.getElementById('distributions').value;
+  const distPct = +document.getElementById('distPct').value / 100;
   const multiple = overrideMultiple || +document.getElementById('multiple').value;
   const yearsUntilSale = +document.getElementById('years').value;
   const basisInput = parseNum('basis');
@@ -1227,7 +1203,7 @@ function calculate(overrideMultiple) {
   for (let y = 1; y <= yearsUntilSale; y++) {
     // Get per-year values (falls back to main inputs if not customized)
     const yProfit = getAnnualProfitForYear(y, annualProfit);
-    const yDist = getDistributionsForYear(y, distributions);
+    const yDist = yProfit * distPct; // distributions = % of that year's EBITDA
 
     // LLC: pass-through, taxed on share of profit
     const llcIncome = yProfit * ownershipPct;
@@ -1319,25 +1295,39 @@ let lastYears = 7;
 function update() {
   // Update slider labels
   document.getElementById('ownershipVal').textContent = document.getElementById('ownership').value + '%';
-  const distSlider = +document.getElementById('distributions').value;
+  const distPctVal = +document.getElementById('distPct').value;
 
   // Rebuild yearly rows if years changed
   const curYears = +document.getElementById('years').value;
   if (curYears !== lastYears) {
     lastYears = curYears;
     if (yearlyOpen.profit) buildYearlyRows('profit');
-    if (yearlyOpen.dist) buildYearlyRows('dist');
   }
-  document.getElementById('distVal').textContent = fmt(distSlider);
-  // Show C-Corp distribution cap warning
-  const capProfit = parseNum('annualProfit');
-  const capOwnership = +document.getElementById('ownership').value / 100;
-  const capCorpRate = +document.getElementById('corpRate').value / 100;
-  const ccorpDistCap = capProfit * (1 - capCorpRate) * capOwnership;
+  document.getElementById('distVal').textContent = distPctVal + '%';
+
+  // Build per-year distribution breakdown
+  const dbyYears = +document.getElementById('years').value;
+  const dbyProfit = parseNum('annualProfit');
+  const dbyOwn = +document.getElementById('ownership').value / 100;
+  const dbyCorp = +document.getElementById('corpRate').value / 100;
+  const dbyContainer = document.getElementById('distByYear');
+  let dbyHtml = '<div style="display:flex;flex-direction:column;gap:4px;padding:8px 10px;background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:8px;max-height:180px;overflow-y:auto;">';
+  let capWarningNeeded = false;
+  for (let y = 1; y <= dbyYears; y++) {
+    const yEbitda = getAnnualProfitForYear(y, dbyProfit);
+    const yDist = yEbitda * (distPctVal / 100);
+    const ccorpMax = yEbitda * (1 - dbyCorp) * dbyOwn;
+    const capped = yDist > ccorpMax;
+    if (capped) capWarningNeeded = true;
+    dbyHtml += '<div style="display:flex;justify-content:space-between;font-size:0.78rem;' + (capped ? 'color:var(--accent-yellow)' : 'color:var(--text-secondary)') + '"><span>Yr ' + y + '</span><span style="font-weight:600;font-variant-numeric:tabular-nums;">' + fmtFull(yDist) + '</span></div>';
+  }
+  dbyHtml += '</div>';
+  dbyContainer.innerHTML = dbyHtml;
+
   const capEl = document.getElementById('distCapWarning');
-  if (distSlider > ccorpDistCap) {
+  if (capWarningNeeded) {
     capEl.style.display = 'block';
-    capEl.innerHTML = 'C-Corp max distribution: <strong>' + fmtFull(ccorpDistCap) + '/yr</strong> (after 21% corp tax). Above this, only LLC distributions increase.';
+    capEl.innerHTML = 'Some years exceed C-Corp distributable limit (after 21% corp tax × ownership). Excess only flows through LLC.';
   } else {
     capEl.style.display = 'none';
   }
@@ -1544,7 +1534,7 @@ async function checkPw() {
 
 // ─── SAVED SCENARIOS ───────────────────────────────────────
 const CONFIG_KEY = 'qsbs_configs';
-const INPUT_IDS = ['zipCode','ownership','annualProfit','distributions','saleRevenue','multiple','years','basis','fedRate','ltcgRate','corpRate','divRate','stateRate','stateCGRate','localRate'];
+const INPUT_IDS = ['zipCode','ownership','annualProfit','distPct','saleRevenue','multiple','years','basis','fedRate','ltcgRate','corpRate','divRate','stateRate','stateCGRate','localRate'];
 
 function getSavedConfigs() {
   try { return JSON.parse(localStorage.getItem(CONFIG_KEY)) || {}; } catch(e) { return {}; }
@@ -1587,9 +1577,6 @@ function saveConfig() {
   if (yearlyOpen.profit && yearlyCustomized.profit) {
     snapshot.yearlyProfit = getYearlyValues('profit');
   }
-  if (yearlyOpen.dist && yearlyCustomized.dist) {
-    snapshot.yearlyDist = getYearlyValues('dist');
-  }
   configs[name] = snapshot;
   localStorage.setItem(CONFIG_KEY, JSON.stringify(configs));
   document.getElementById('configName').value = '';
@@ -1627,19 +1614,6 @@ function loadConfig() {
   } else {
     if (yearlyOpen.profit) toggleYearly('profit');
   }
-  if (snapshot.yearlyDist && snapshot.yearlyDist.length > 0) {
-    if (!yearlyOpen.dist) toggleYearly('dist');
-    yearlyCustomized.dist = true;
-    const container = document.getElementById('distYearRows');
-    const inputs = container.querySelectorAll('input[type="text"]');
-    snapshot.yearlyDist.forEach((v, i) => {
-      if (inputs[i]) inputs[i].value = Number(v).toLocaleString('en-US');
-    });
-    updateYearlyAvg('dist');
-  } else {
-    if (yearlyOpen.dist) toggleYearly('dist');
-  }
-
   onZipChange();
   update();
 }
